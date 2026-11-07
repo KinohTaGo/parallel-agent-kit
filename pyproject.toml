@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "parallel-agent-kit"
+version = "0.1.0"
+description = "Admission gate, file-based mailbox and shared-worktree guards for running several coding agents on one machine"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+agentkit-gate = "agentkit.gate:main"
+agentkit-mailbox = "agentkit.mailbox:main"
+agentkit-worktree-guard = "agentkit.worktree:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"

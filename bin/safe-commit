@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# safe-commit -- commit exactly the named files in a working tree shared by several agents,
+# then check that the commit holds those files and nothing else.
+#
+#   safe-commit -m "message" -- path...
+#   safe-commit -F message.txt -- path...
+#
+# Why not "git add <files> && git commit"?  The index is shared: if another agent has
+# already staged something, a plain commit takes it too.  "git commit -- <paths>" commits
+# only the named paths and leaves everyone else's staged work alone.  New (untracked) files
+# are unknown to that pathspec, so they are added first.
+#
+# The commit is then compared with the list you gave.  Hooks and concurrent writers can
+# still slip content in; on a mismatch this exits 3 and prints the difference.  It never
+# amends or resets to "fix" it -- HEAD may already be someone else's base.
+#
+# Exit codes: 0 committed and verified / 1 git failed / 2 usage / 3 commit != requested paths
+set -euo pipefail
+# Paths are file names, never patterns: "*.py" or ":(glob)..." must not widen the commit.
+export GIT_LITERAL_PATHSPECS=1
+
+usage() { echo "usage: safe-commit (-m MSG | -F FILE) -- path..." >&2; exit 2; }
+
+msg_args=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -m|-F) [ $# -ge 2 ] || usage; msg_args+=("$1" "$2"); shift 2 ;;
+    --) shift; break ;;
+    -a|--all|--amend|-A) echo "safe-commit: $1 is not allowed in a shared tree" >&2; exit 2 ;;
+    *) usage ;;
+  esac
+done
+[ "${#msg_args[@]}" -gt 0 ] || usage
+[ $# -gt 0 ] || usage
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "safe-commit: not inside a git work tree" >&2; exit 2; }
+
+for f in "$@"; do
+  case "$f" in
+    :*) echo "safe-commit: pathspec magic is not accepted: $f" >&2; exit 2 ;;
+    /*|../*|*/../*|..) echo "safe-commit: use paths relative to the current directory: $f" >&2; exit 2 ;;
+  esac
+  if [ -d "$f" ]; then
+    echo "safe-commit: $f is a directory; name files so the result can be checked" >&2
+    exit 2
+  fi
+  if ! git ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
+    [ -e "$f" ] || { echo "safe-commit: $f is neither tracked nor present" >&2; exit 2; }
+    git add -- "$f"
+  fi
+done
+
+echo "safe-commit: changes about to be committed:" >&2
+git diff HEAD --stat -- "$@" >&2 || true
+
+git commit -q "${msg_args[@]}" -- "$@" || exit 1
+
+prefix=$(git rev-parse --show-prefix)
+requested=$(for f in "$@"; do printf '%s%s\n' "$prefix" "${f#./}"; done | sort -u)
+actual=$(git show --name-only --format= HEAD | sed '/^$/d' | sort -u)
+extra=$(comm -13 <(printf '%s\n' "$requested") <(printf '%s\n' "$actual"))
+unchanged=$(comm -23 <(printf '%s\n' "$requested") <(printf '%s\n' "$actual"))
+if [ -n "$unchanged" ]; then
+  echo "safe-commit: note: requested but unchanged: $(printf '%s ' $unchanged)" >&2
+fi
+if [ -n "$extra" ]; then
+  echo "safe-commit: the commit holds files you did not name: $(printf '%s ' $extra)" >&2
+  echo "safe-commit: HEAD is $(git rev-parse --short HEAD); nothing was rewritten" >&2
+  exit 3
+fi
+git show --stat --oneline HEAD  # no "| head": SIGPIPE + pipefail would turn a good commit into a failure
