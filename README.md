@@ -62,7 +62,8 @@ kind of bug, because nobody goes looking for it.
 
 * Reads a shell command line **before** the shell runs it and reports git commands that are
   harmful in a shared tree, including inside `&&` chains, `bash -c '…'`, `$( … )`, behind
-  `sudo`/`env`, `eval`, and with `git -C dir`. Heredoc bodies are treated as data.
+  wrappers such as `sudo`/`env`/`timeout`/`nice`, `eval`, shell keywords, line continuations,
+  and with `git -C dir`. Heredoc bodies are treated as data.
 * Knows that git accepts abbreviated long options (`--ha` is `--hard`), expands configured
   aliases with `git config`, and refuses inline `-c alias.*=` it cannot see through.
 * Catches `git commit -m "… \`cmd\` …"`: the shell runs the backticked text before git starts,
@@ -129,7 +130,7 @@ fails to start can block every tool call, and then it cannot be fixed from insid
 ## Tests
 
 ```sh
-python3 -m pytest -q tests     # 94 tests
+python3 -m pytest -q tests     # 107 tests
 bats tests/bats                # 7 tests for safe-commit
 ```
 

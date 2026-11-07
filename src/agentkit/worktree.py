@@ -28,7 +28,57 @@ import subprocess
 import sys
 from dataclasses import dataclass
 
-WRAPPERS = {"sudo", "command", "env", "nohup", "time", "exec", "xargs"}
+WRAPPERS = {
+    "sudo",
+    "doas",
+    "command",
+    "builtin",
+    "env",
+    "nohup",
+    "time",
+    "exec",
+    "xargs",
+    "nice",
+    "ionice",
+    "timeout",
+    "gtimeout",
+    "stdbuf",
+    "caffeinate",
+    "chronic",
+    "flock",
+    "unbuffer",
+    "watch",
+}
+SHELL_KEYWORDS = {"if", "then", "elif", "else", "do", "while", "until", "!", "{", "}", "time", "coproc"}
+# commands whose arguments are text, so "git stash" after them is data, not a command
+DATA_COMMANDS = {
+    "echo",
+    "printf",
+    "grep",
+    "egrep",
+    "fgrep",
+    "rg",
+    "ag",
+    "cat",
+    "man",
+    "less",
+    "more",
+    "head",
+    "tail",
+    "sed",
+    "awk",
+    "wc",
+    "sort",
+    "tee",
+    "jq",
+    "diff",
+    "cd",
+    "ls",
+    "mkdir",
+    "touch",
+    "test",
+    "[",
+}
 SHELLS = {"bash", "sh", "zsh", "dash"}
 SEPARATORS = {";", "&&", "||", "|", "&", "(", ")", "|&"}
 _ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
@@ -88,7 +138,7 @@ def _simple_commands(line: str) -> list:
 def _unwrap(words: list) -> list:
     """Drop leading VAR=value words and wrappers such as sudo/env/xargs."""
     i = 0
-    while i < len(words) and _ASSIGN_RE.match(words[i]):
+    while i < len(words) and (_ASSIGN_RE.match(words[i]) or words[i] in SHELL_KEYWORDS):
         i += 1
     words = words[i:]
     if words and words[0].rsplit("/", 1)[-1] in WRAPPERS:
@@ -291,6 +341,7 @@ _DANGER_WORD_RE = re.compile(r"\b(" + "|".join(sorted(DANGEROUS_SUBS)) + r")\b")
 def check_command(command: str, _depth: int = 0) -> list:
     """Return the list of Findings for a shell command line (empty list == allowed)."""
     findings = []
+    command = command.replace("\\\n", " ")  # a backslash-newline joins two lines into one command
     for line in _strip_heredocs(command):
         try:
             cmds = _simple_commands(line)
@@ -316,6 +367,12 @@ def check_command(command: str, _depth: int = 0) -> list:
                 continue
             if prog == "git":
                 findings += _check_git(words, _depth)
+            elif prog not in DATA_COMMANDS:
+                # an unknown wrapper (e.g. a site-specific runner): look for git further along
+                for j, w in enumerate(words[1:], 1):
+                    if w.rsplit("/", 1)[-1] == "git":
+                        findings += _check_git(words[j:], _depth)
+                        break
         if re.search(r"\bgit\b.*\bcommit\b", line) and _MSG_SUBST_RE.search(line):
             findings.append(
                 Finding(

@@ -162,3 +162,27 @@ def test_configured_aliases_are_expanded(tmp_path):
     assert rules(f"git -C {repo} st") == ["stash"]
     assert rules(f"git -C {repo} nuke") == ["reset-hard"]
     assert rules(f"git -C {repo} s") == []
+
+
+@pytest.mark.parametrize(
+    "cmd,rule",
+    [
+        ("nice -n 5 git stash", "stash"),
+        ("timeout 10 git reset --hard", "reset-hard"),
+        ("stdbuf -oL git clean -f", "clean"),
+        ("my-runner --quiet git push --force", "force-push"),
+        ("git \\\n  stash", "stash"),
+        ("{ git stash; }", "stash"),
+        ("if true; then git stash; fi", "stash"),
+        ("! git reset --hard", "reset-hard"),
+        ('if eval "git stash"; then :; fi', "stash"),
+        ("! bash -c 'git clean -f'", "clean"),
+    ],
+)
+def test_wrappers_keywords_and_continuations(cmd, rule):
+    assert rule in rules(cmd)
+
+
+@pytest.mark.parametrize("cmd", ["cd git && ls", "printf '%s\\n' git stash", "test -d git"])
+def test_git_as_data_is_not_a_command(cmd):
+    assert rules(cmd) == []

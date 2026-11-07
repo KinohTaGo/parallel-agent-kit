@@ -43,7 +43,7 @@
 
 ### 作業ツリーの守り（`src/agentkit/worktree.py`）と `safe-commit`
 
-* shell が走らせる**前**に命令の行を読み、共有の作業ツリーで害になる git の命令を報告します。`&&` の鎖・`bash -c '…'`・`$( … )`・`sudo`/`env` の後ろ・`eval`・`git -C dir` の中も見ます。heredoc の本文はデータとして扱います。
+* shell が走らせる**前**に命令の行を読み、共有の作業ツリーで害になる git の命令を報告します。`&&` の鎖・`bash -c '…'`・`$( … )`・`sudo`/`env`/`timeout`/`nice` などの後ろ・`eval`・shell の予約語・行の継続（`\` と改行）・`git -C dir` の中も見ます。heredoc の本文はデータとして扱います。
 * git が長い option の省略（`--ha` は `--hard`）を受けることを知っており、設定された alias は `git config` で展開し、中が見えない `-c alias.*=` は拒みます。
 * `git commit -m "… \`cmd\` …"` を捕まえます。バッククォートの中は git が起動する前に shell が実行するので、git の hook では見えません。`-F <file>` か一重引用符を使ってください。
 * `safe-commit` は名指しした file だけを commit し（`git commit -- <paths>` は他のエージェントが stage した物を無視する。path は文字どおりで glob にしない）、新しい file は先に add し、そのうえで**commit を確かめます**。hook や同時の書き手が他の file を入れていたら exit 3 で知らせ、何も書き換えません。
@@ -68,7 +68,7 @@ hook の script を直したら、その場で `python3 -m py_compile <file>` �
 ## 試験
 
 ```sh
-python3 -m pytest -q tests     # 94 件
+python3 -m pytest -q tests     # 107 件
 bats tests/bats                # safe-commit の 7 件
 ```
 
